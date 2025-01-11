@@ -122,16 +122,7 @@ app_license = "MIT"
 # 		"on_cancel": "method",
 # 		"on_trash": "method"
 # 	}
-# }
-
-doc_events = {
-    "Biometric Data Staging": {
-        "before_save": "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.validate_biometric_data"
-    },
-    "Employee": {
-        "validate": "hrms.hr.doctype.employee.validate"
-    }
-}
+#
 
 # Scheduled Tasks
 # ---------------
@@ -139,7 +130,7 @@ doc_events = {
 scheduler_events = {
     "cron": {
         "*/5 * * * *": [
-            "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_sync.synchronize_biometric_data"
+            "biometric_client.biometric_client.doctype.biometric_data_staging.validate_biometric_data"
         ]
     }
 

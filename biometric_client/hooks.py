@@ -130,7 +130,7 @@ app_license = "MIT"
 scheduler_events = {
     "cron": {
         "*/5 * * * *": [
-            "biometric_client.biometric_client.doctype.biometric_data_staging.validate_biometric_data"
+            "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.validate_biometric_data"
         ]
     }
 

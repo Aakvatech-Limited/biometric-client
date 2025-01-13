@@ -127,13 +127,13 @@ app_license = "MIT"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
+scheduler_events = {
 # 	"all": [
 # 		"biometric_client.tasks.all"
 # 	],
-# 	"daily": [
-# 		"biometric_client.tasks.daily"
-# 	],
+	"daily": [
+        "biometric_client.biometric_client.doctype.biometric_client_settings.biometric_client_settings.create_attendance_automated"
+	],
 # 	"hourly": [
 # 		"biometric_client.tasks.hourly"
 # 	],
@@ -143,7 +143,7 @@ app_license = "MIT"
 # 	"monthly": [
 # 		"biometric_client.tasks.monthly"
 # 	],
-# }
+}
 
 # Testing
 # -------

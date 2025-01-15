@@ -132,14 +132,13 @@ scheduler_events = {
         "*/5 * * * *": [
             "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.validate_biometric_data"
         ]
-    }
-
+    },
 # 	"all": [
 # 		"biometric_client.tasks.all"
 # 	],
-# 	"daily": [
-# 		"biometric_client.tasks.daily"
-# 	],
+	"daily": [
+        "biometric_client.biometric_client.doctype.biometric_client_settings.biometric_client_settings.create_attendance_automated"
+	],
 # 	"hourly": [
 # 		"biometric_client.tasks.hourly"
 # 	],

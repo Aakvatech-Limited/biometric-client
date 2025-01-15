@@ -526,7 +526,7 @@ def fetch_transactions_with_retries(url, retries=5, backoff_factor=2):
             if attempt == retries:
                 raise e
             sleep_time = backoff_factor ** attempt
-            frappe.log_error(f"Retry {attempt}/{retries} - Error: {str(e)}", "API Timeout")
+            frappe.log_error("API Timeout", f"Retry {attempt}/{retries} - Error: {str(e)}")
             sleep(sleep_time)
             attempt += 1
     return {}
@@ -536,20 +536,20 @@ def validate_and_parse_time(time_str):
     try:
         return str(get_datetime(time_str))
     except Exception as e:
-        frappe.log_error(f"Invalid time format: {time_str}", "Time Validation Error")
+        frappe.log_error("Time Validation Error", f"Invalid time format: {time_str}")
         raise ValueError(f"Invalid time format: {time_str}")
 
 def process_attendance_in_background():
     """Fetch and process attendance data with robust pagination, retries, and error handling."""
     if not check_master_enable():
-        frappe.log_error("Biometric integration is disabled in settings", "Automated Attendance")
+        frappe.log_error("Automated Attendance", "Biometric integration is disabled in settings")
         return
 
     # Get department ID for 'WASCO ISOAF Tanzania Limited'
     department_name = "WASCO ISOAF Tanzania Limited"
     department_id = get_department_id(department_name)
     if not department_id:
-        frappe.log_error(f"Department '{department_name}' not found", "Automated Attendance")
+        frappe.log_error("Department not found", f"Department '{department_name}' not found" )
         return
 
     # Fetch and validate start_time
@@ -557,7 +557,7 @@ def process_attendance_in_background():
     if not start_time:
         start_time = frappe.db.get_value("Biometric Client Settings", None, "start_time")
     if not start_time:
-        frappe.log_error("Start time is not defined in Biometric Client Settings", "Automated Attendance")
+        frappe.log_error("Automated Attendance", "Start time is not defined in Biometric Client Settings")
         return
 
     start_time = validate_and_parse_time(start_time)
@@ -593,17 +593,17 @@ def process_attendance_in_background():
                     valid_transactions.append(transaction)
                 else:
                     frappe.log_error(
-                        f"Invalid transaction data: {transaction}",
-                        "Data Validation Error"
+						"Data Validation Error",
+                        f"Invalid transaction data: {transaction}"
                     )
 
             all_transactions.extend(valid_transactions)
             total_records_processed += len(valid_transactions)
 
             frappe.log_error(
+				"Pagination Progress",
                 f"Processed page {page}: {len(valid_transactions)} valid records "
-                f"(Total: {total_records_processed}/{total_count})",
-                "Pagination Progress"
+                f"(Total: {total_records_processed}/{total_count})"
             )
 
             if not next_page:
@@ -613,15 +613,15 @@ def process_attendance_in_background():
 
         except Exception as e:
             frappe.log_error(
-                f"Error during pagination: {str(e)}. "
+                "Pagination Error",
+				 f"Error during pagination: {str(e)}. "
                 f"Last processed page: {page-1}, "
-                f"Total records: {total_records_processed}",
-                "Pagination Error"
+                f"Total records: {total_records_processed}"
             )
             break
 
     if not all_transactions:
-        frappe.log_error("No valid transactions found", "Automated Attendance")
+        frappe.log_error("Automated Attendance","No valid transactions found")
         return
 
     # Process transactions with improved error handling
@@ -645,8 +645,8 @@ def process_attendance_in_background():
 
         except Exception as e:
             frappe.log_error(
-                f"Error processing transaction: {transaction}, Error: {str(e)}",
-                "Transaction Processing Error"
+				"Transaction Processing Error",
+                f"Error processing transaction: {transaction}, Error: {str(e)}"
             )
             continue
 
@@ -655,7 +655,7 @@ def process_attendance_in_background():
         try:
             employee = frappe.db.get_value("Employee", {"biometric_id": biometric_id}, "name")
             if not employee:
-                frappe.log_error(f"Employee not found for Biometric ID {biometric_id}", "Automated Attendance")
+                frappe.log_error("Automated Attendance", f"Employee not found for Biometric ID {biometric_id}")
                 continue
 
             in_time = min(punch_times)
@@ -703,8 +703,8 @@ def process_attendance_in_background():
 
         except Exception as e:
             frappe.log_error(
-                f"Error processing attendance for {biometric_id} on {punch_date}: {str(e)}",
-                "Attendance Processing Error"
+				"Attendance Processing Error",
+                f"Error processing attendance for {biometric_id} on {punch_date}: {str(e)}"
             )
 
     # Update last_sync_time
@@ -712,14 +712,14 @@ def process_attendance_in_background():
         frappe.db.set_value("Biometric Client Settings", None, "last_sync_time", latest_punch_time)
         frappe.db.commit()
         frappe.log_error(
+			"Sync Complete",
             f"Sync completed. Processed {len(all_transactions)} records. "
-            f"New last_sync_time: {latest_punch_time}",
-            "Sync Complete"
+            f"New last_sync_time: {latest_punch_time}"
         )
     except Exception as e:
         frappe.log_error(
-            f"Error updating last_sync_time: {str(e)}",
-            "Sync Error"
+			"Sync Error",
+            f"Error updating last_sync_time: {str(e)}"
         )
 
 def get_department_id(department_name):
@@ -741,10 +741,10 @@ def get_department_id(department_name):
             url = res.get("next")
 
         # If the loop completes and no department is found
-        frappe.log_error(f"Department '{department_name}' not found", "Department Fetch Error")
+        frappe.log_error("Department Fetch Error", f"Department '{department_name}' not found")
         return None
     except requests.RequestException as e:
-        frappe.log_error(f"Error fetching departments: {str(e)}", "Department Fetch Error")
+        frappe.log_error("Department Fetch Error", f"Error fetching departments: {str(e)}")
         return None
 
 
@@ -768,7 +768,7 @@ def fetch_departments():
 
         return all_departments
     except requests.RequestException as e:
-        frappe.log_error(f"Error fetching departments: {str(e)}", "Fetch Departments Error")
+        frappe.log_error("Fetch Departments Error", f"Error fetching departments: {str(e)}")
         return []
 
 @frappe.whitelist()
@@ -796,7 +796,7 @@ def fetch_employees_by_department(department_name):
 
         return all_employees
     except requests.RequestException as e:
-        frappe.log_error(f"Error fetching employees: {str(e)}", "Fetch Employees Error")
+        frappe.log_error("Fetch Employees Error", f"Error fetching employees: {str(e)}")
         return []
 
 def setup_scheduled_job_type():
@@ -831,8 +831,8 @@ def execute_scheduled_job():
         create_attendance_automated()
     except Exception as e:
         frappe.log_error(
-            f"Error in scheduled attendance synchronization: {str(e)}",
-            "Scheduled Job Error"
+			"Scheduled Job Error",
+            f"Error in scheduled attendance synchronization: {str(e)}"
         )
         raise
 
@@ -917,7 +917,7 @@ def fetch_transaction_report(start_date, end_date, page=1, page_size=100, depart
         return all_records
 
     except requests.exceptions.RequestException as e:
-        frappe.log_error(f"Error fetching transaction report: {str(e)}", "Transaction Report Fetch Error")
+        frappe.log_error("Transaction Report Fetch Error", f"Error fetching transaction report: {str(e)}")
         return {"error": str(e)}
 
 def get_department_id_case_sensitive(department_name):
@@ -936,9 +936,9 @@ def get_department_id_case_sensitive(department_name):
             
             url = res.get("next")
 
-        frappe.log_error(f"Department '{department_name}' not found (case-sensitive)", "Department Fetch Error")
+        frappe.log_error("Department Fetch Error", f"Department '{department_name}' not found (case-sensitive)")
         return None
 
     except requests.RequestException as e:
-        frappe.log_error(f"Error fetching departments: {str(e)}", "Fetch Departments Error")
+        frappe.log_error("Fetch Departments Error", f"Error fetching departments: {str(e)}")
         return None

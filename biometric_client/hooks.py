@@ -122,12 +122,17 @@ app_license = "MIT"
 # 		"on_cancel": "method",
 # 		"on_trash": "method"
 # 	}
-# }
+#
 
 # Scheduled Tasks
 # ---------------
 
 scheduler_events = {
+    "cron": {
+        "*/5 * * * *": [
+            "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.validate_biometric_data"
+        ]
+    },
 # 	"all": [
 # 		"biometric_client.tasks.all"
 # 	],

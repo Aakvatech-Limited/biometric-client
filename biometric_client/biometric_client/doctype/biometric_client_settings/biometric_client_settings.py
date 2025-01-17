@@ -501,7 +501,7 @@ def make_employee_checkin():
 def create_attendance_automated():
     """Enqueue attendance creation as a background job."""
     frappe.enqueue("biometric_client.biometric_client.doctype.biometric_client_settings.biometric_client_settings.process_attendance_in_background",
-                   queue='long', timeout=3600)  # Timeout extended to 1 hour
+                   queue='long', timeout=3600)
     return "Attendance synchronization has started in the background."
 
 def fetch_transactions_with_retries(url, retries=5, backoff_factor=2):
@@ -512,14 +512,9 @@ def fetch_transactions_with_retries(url, retries=5, backoff_factor=2):
             response = requests.get(url, headers=get_headers(), timeout=60)
             response.raise_for_status()
             
-            # Validate response structure
             data = response.json()
-            if not isinstance(data, dict):
+            if not isinstance(data, dict) or 'data' not in data:
                 raise ValueError("Invalid response format")
-            
-            # Check for required fields
-            if 'data' not in data:
-                raise ValueError("Missing 'data' field in response")
                 
             return data
         except requests.exceptions.RequestException as e:
@@ -531,196 +526,192 @@ def fetch_transactions_with_retries(url, retries=5, backoff_factor=2):
             attempt += 1
     return {}
 
-def validate_and_parse_time(time_str):
-    """Validate and parse time string to ensure proper format."""
+def get_shift_type(employee, attendance_date):
+    """
+    Get shift type for employee on given date.
+    First checks shift assignment, then falls back to default shift.
+    Returns tuple of (shift_type, source) where source is either 'assignment' or 'default'
+    """
+    # First check shift assignment
+    assigned_shift = frappe.db.get_value(
+        "Shift Assignment",
+        {
+            "employee": employee,
+            "start_date": ["<=", attendance_date],
+            "end_date": [">=", attendance_date]
+        },
+        "shift_type"
+    )
+    
+    if assigned_shift:
+        return assigned_shift, 'assignment'
+        
+    # If no assignment found, check default shift
+    default_shift = frappe.db.get_value("Employee", employee, "default_shift")
+    if default_shift:
+        return default_shift, 'default'
+        
+    return None, None
+
+def create_attendance_record(employee_id, attendance_date, status):
+    """Create or update attendance record using assigned shift or default shift."""
     try:
-        return str(get_datetime(time_str))
+        # Check for shift assignment or default shift
+        shift, shift_source = get_shift_type(employee_id, attendance_date)
+        if not shift:
+            frappe.log_error(
+                "No Shift Found",
+                f"No shift assignment or default shift found for employee {employee_id} on {attendance_date}. Attendance not marked."
+            )
+            return False
+
+        # Proceed with attendance creation
+        existing_attendance = frappe.db.exists("Attendance", {
+            "employee": employee_id,
+            "attendance_date": attendance_date
+        })
+
+        if existing_attendance:
+            # Update existing record if not submitted
+            attendance_doc = frappe.get_doc("Attendance", existing_attendance)
+            if attendance_doc.docstatus == 1:  # Skip if already submitted
+                return True
+                
+            attendance_doc.status = status
+            attendance_doc.shift = shift
+            attendance_doc.save(ignore_permissions=True)
+            
+        else:
+            # Create new attendance record
+            company = frappe.db.get_value("Employee", employee_id, "company")
+            attendance_doc = frappe.get_doc({
+                "doctype": "Attendance",
+                "employee": employee_id,
+                "attendance_date": attendance_date,
+                "status": status,
+                "company": company,
+                "shift": shift
+            })
+            attendance_doc.insert(ignore_permissions=True)
+            attendance_doc.submit()
+            
+        # Log the shift source used
+        frappe.log_error(
+            "Attendance Created",
+            f"Attendance marked for employee {employee_id} on {attendance_date} using {shift_source} shift: {shift}"
+        )
+        return True
+            
     except Exception as e:
-        frappe.log_error("Time Validation Error", f"Invalid time format: {time_str}")
-        raise ValueError(f"Invalid time format: {time_str}")
+        frappe.log_error(
+            "Attendance Creation Error",
+            f"Error creating attendance for {employee_id} on {attendance_date}: {str(e)}"
+        )
+        return False
 
 def process_attendance_in_background():
-    """Fetch and process attendance data with robust pagination, retries, and error handling."""
+    """Fetch and process attendance data, creating records based on shifts."""
     if not check_master_enable():
         frappe.log_error("Automated Attendance", "Biometric integration is disabled in settings")
         return
 
-    # Get department ID for 'WASCO ISOAF Tanzania Limited'
+    # Get department ID
     department_name = "WASCO ISOAF Tanzania Limited"
     department_id = get_department_id(department_name)
     if not department_id:
-        frappe.log_error("Department not found", f"Department '{department_name}' not found" )
+        frappe.log_error("Department not found", f"Department '{department_name}' not found")
         return
 
-    # Fetch and validate start_time
-    start_time = frappe.db.get_value("Biometric Client Settings", None, "last_sync_time")
-    if not start_time:
-        start_time = frappe.db.get_value("Biometric Client Settings", None, "start_time")
+    # Get start time
+    start_time = frappe.db.get_value("Biometric Client Settings", None, "last_sync_time") or \
+                frappe.db.get_value("Biometric Client Settings", None, "start_time")
     if not start_time:
         frappe.log_error("Automated Attendance", "Start time is not defined in Biometric Client Settings")
         return
 
-    start_time = validate_and_parse_time(start_time)
     end_time = str(get_datetime())
-
-    # Initialize pagination parameters
-    page_size = 100  # Adjust based on API limitations
+    latest_punch_time = start_time
+    
+    # Initialize counters
+    page_size = 100
     page = 1
-    all_transactions = []
-    total_records_processed = 0
+    processed_count = 0
+    skipped_count = 0
+    error_count = 0
 
     while True:
         try:
-            # Construct URL with pagination parameters
             url = (f"{get_url()}/iclock/api/transactions/"
                   f"?start_time={start_time}&end_time={end_time}"
                   f"&department_id={department_id}&page={page}&page_size={page_size}")
 
             response = fetch_transactions_with_retries(url)
-            
-            # Extract transactions and pagination info
             transactions = response.get("data", [])
-            total_count = response.get("count", 0)
-            next_page = response.get("next")
-
+            
             if not transactions:
                 break
 
-            # Validate transaction data
-            valid_transactions = []
+            # Process each transaction
             for transaction in transactions:
-                if all(key in transaction for key in ["emp", "punch_time"]):
-                    valid_transactions.append(transaction)
-                else:
-                    frappe.log_error(
-						"Data Validation Error",
-                        f"Invalid transaction data: {transaction}"
-                    )
+                try:
+                    biometric_id = transaction.get("emp")
+                    punch_time = transaction.get("punch_time")
+                    
+                    if not biometric_id or not punch_time:
+                        continue
 
-            all_transactions.extend(valid_transactions)
-            total_records_processed += len(valid_transactions)
+                    employee_id = frappe.db.get_value("Employee", 
+                                                    {"biometric_id": biometric_id}, 
+                                                    "name")
+                    if not employee_id:
+                        continue
 
-            frappe.log_error(
-				"Pagination Progress",
-                f"Processed page {page}: {len(valid_transactions)} valid records "
-                f"(Total: {total_records_processed}/{total_count})"
-            )
+                    attendance_date = getdate(punch_time)
+                    
+                    # Try to create attendance record
+                    if create_attendance_record(
+                        employee_id=employee_id,
+                        attendance_date=attendance_date,
+                        status="Present"
+                    ):
+                        processed_count += 1
+                    else:
+                        skipped_count += 1
 
-            if not next_page:
+                    # Update latest punch time
+                    if punch_time > latest_punch_time:
+                        latest_punch_time = punch_time
+
+                except Exception as e:
+                    error_count += 1
+                    frappe.log_error("Transaction Processing Error", 
+                                   f"Error processing transaction: {transaction}, Error: {str(e)}")
+                    continue
+
+            if not response.get("next"):
                 break
-
+                
             page += 1
 
         except Exception as e:
-            frappe.log_error(
-                "Pagination Error",
-				 f"Error during pagination: {str(e)}. "
-                f"Last processed page: {page-1}, "
-                f"Total records: {total_records_processed}"
-            )
+            frappe.log_error("Pagination Error", 
+                           f"Error during pagination: {str(e)}. Last processed page: {page-1}")
             break
 
-    if not all_transactions:
-        frappe.log_error("Automated Attendance","No valid transactions found")
-        return
-
-    # Process transactions with improved error handling
-    latest_punch_time = start_time
-    employee_punches = {}
-
-    for transaction in all_transactions:
-        try:
-            biometric_id = transaction["emp"]
-            punch_time = validate_and_parse_time(transaction["punch_time"])
-            
-            punch_date = getdate(punch_time)
-            key = (biometric_id, punch_date)
-
-            if key not in employee_punches:
-                employee_punches[key] = []
-            employee_punches[key].append(punch_time)
-
-            if punch_time > latest_punch_time:
-                latest_punch_time = punch_time
-
-        except Exception as e:
-            frappe.log_error(
-				"Transaction Processing Error",
-                f"Error processing transaction: {transaction}, Error: {str(e)}"
-            )
-            continue
-
-    # Process attendance records
-    for (biometric_id, punch_date), punch_times in employee_punches.items():
-        try:
-            employee = frappe.db.get_value("Employee", {"biometric_id": biometric_id}, "name")
-            if not employee:
-                frappe.log_error("Automated Attendance", f"Employee not found for Biometric ID {biometric_id}")
-                continue
-
-            in_time = min(punch_times)
-            out_time = max(punch_times)
-
-            # Check if attendance already exists
-            existing_attendance = frappe.db.exists("Attendance", {
-                "employee": employee,
-                "attendance_date": punch_date
-            })
-
-            if existing_attendance:
-                attendance_doc = frappe.get_doc("Attendance", existing_attendance)
-                if attendance_doc.docstatus == 1:
-                    continue
-                
-                attendance_doc.in_time = in_time
-                attendance_doc.out_time = out_time
-                attendance_doc.save(ignore_permissions=True)
-                
-            else:
-                # Create new attendance record
-                shift = frappe.db.get_value(
-                    "Shift Assignment",
-                    {
-                        "employee": employee,
-                        "start_date": ["<=", punch_date],
-                        "end_date": [">=", punch_date]
-                    },
-                    "shift_type"
-                )
-                
-                attendance_doc = frappe.get_doc({
-                    "doctype": "Attendance",
-                    "employee": employee,
-                    "attendance_date": punch_date,
-                    "status": "Present",
-                    "in_time": in_time,
-                    "out_time": out_time,
-                    "company": frappe.db.get_value("Employee", employee, "company"),
-                    "shift": shift
-                })
-                attendance_doc.insert(ignore_permissions=True)
-                attendance_doc.submit()
-
-        except Exception as e:
-            frappe.log_error(
-				"Attendance Processing Error",
-                f"Error processing attendance for {biometric_id} on {punch_date}: {str(e)}"
-            )
-
-    # Update last_sync_time
+    # Update last sync time
     try:
         frappe.db.set_value("Biometric Client Settings", None, "last_sync_time", latest_punch_time)
         frappe.db.commit()
-        frappe.log_error(
-			"Sync Complete",
-            f"Sync completed. Processed {len(all_transactions)} records. "
-            f"New last_sync_time: {latest_punch_time}"
-        )
     except Exception as e:
-        frappe.log_error(
-			"Sync Error",
-            f"Error updating last_sync_time: {str(e)}"
-        )
+        frappe.log_error("Sync Time Update Error", f"Error updating last_sync_time: {str(e)}")
+
+    # Log summary
+    frappe.log_error("Processing Summary", 
+                    f"Processed {processed_count} attendance records, "
+                    f"Skipped {skipped_count} records due to missing shifts, "
+                    f"Encountered {error_count} errors. "
+                    f"New last_sync_time: {latest_punch_time}")
+
 
 def get_department_id(department_name):
     """Fetch department ID by department name from ZKBioTime with pagination."""

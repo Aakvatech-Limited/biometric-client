@@ -11,7 +11,7 @@ app_license = "MIT"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/biometric_client/css/biometric_client.css"
 # app_include_js = "/assets/biometric_client/js/biometric_client.js"
-app_include_js = "/assets/biometric_client/js/biometric_data_staging_list.js"
+#app_include_js = "/assets/biometric_client/js/biometric_data_staging_list.js"
 
 
 # include js, css files in header of web template

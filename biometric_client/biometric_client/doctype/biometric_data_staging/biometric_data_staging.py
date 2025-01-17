@@ -4,7 +4,7 @@
 
 import frappe
 from frappe.utils import now
-#from frappe import _
+from datetime import datetime, timedelta
 from frappe.model.document import Document
 
 class BiometricDataStaging(Document):
@@ -77,8 +77,76 @@ def validate_biometric_data():
                 
             })
 
+@frappe.whitelist()
+def get_sync_status_summary():
+    """
+    Get summary of sync status for dashboard with detailed logs since last sync
+    """
+    try:
+        # Get 7-day summary for specific statuses
+        summary = frappe.db.sql("""
+            SELECT 
+                status,
+                COUNT(*) as count,
+                DATE(timestamp) as date
+            FROM `tabBiometric Data Staging`
+            WHERE 
+                timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                AND status IN ('Processed', 'Pending', 'Ignored')
+            GROUP BY status, DATE(timestamp)
+            ORDER BY DATE(timestamp) DESC
+        """, as_dict=True)
 
+        # Get device stats with total records and last sync
+        device_stats = frappe.db.sql("""
+            SELECT 
+                device_id,
+                COUNT(*) as total_count,
+                MAX(timestamp) as last_sync
+            FROM `tabBiometric Data Staging`
+            GROUP BY device_id
+        """, as_dict=True)
 
-            
-   
-   
+        # Get status counts for each device
+        for device in device_stats:
+            status_details = frappe.db.sql("""
+                SELECT 
+                    status,
+                    COUNT(*) as status_count
+                FROM `tabBiometric Data Staging`
+                WHERE 
+                    device_id = %s
+                    AND status IN ('Processed', 'Pending', 'Ignored')
+                GROUP BY status
+            """, (device.device_id), as_dict=True)
+            device['status_details'] = status_details
+            device['count'] = device.total_count
+
+        # Get counts since last sync
+        last_sync_time = frappe.db.sql("""
+            SELECT MAX(timestamp) as last_sync
+            FROM `tabBiometric Data Staging`
+        """, as_dict=True)[0].last_sync
+
+        if last_sync_time:
+            last_sync_summary = frappe.db.sql("""
+                SELECT 
+                    status,
+                    COUNT(*) as count
+                FROM `tabBiometric Data Staging`
+                WHERE 
+                    timestamp = %s
+                    AND status IN ('Processed', 'Pending', 'Ignored')
+                GROUP BY status
+            """, (last_sync_time), as_dict=True)
+        else:
+            last_sync_summary = []
+
+        return {
+            'status_summary': summary,
+            'device_stats': device_stats,
+            'last_sync_summary': last_sync_summary
+        }
+    except Exception as e:
+        frappe.log_error(f"Error getting sync summary: {str(e)}", "Biometric List View Error")
+        return {'error': str(e)}

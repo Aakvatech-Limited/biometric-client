@@ -654,7 +654,7 @@ def process_attendance_in_background():
             # Process each transaction
             for transaction in transactions:
                 try:
-                    biometric_id = transaction.get("emp")
+                    biometric_id = transaction.get("emp_code")
                     punch_time = transaction.get("punch_time")
                     
                     if not biometric_id or not punch_time:

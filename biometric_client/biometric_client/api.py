@@ -3,6 +3,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any
+from frappe.utils import now
 
 @frappe.whitelist(allow_guest=True)
 def upload_bulk_biometric_data():
@@ -77,7 +78,8 @@ def process_bulk_records(records: List[Dict[str, Any]]) -> Dict[str, List]:
                     record["timestamp"],
                     record["punch_type"],
                     record.get("device_id"),
-                    record.get("status", "Pending")
+                    record.get("status", "Pending"),
+                    now()
                 ])
 
                 results["success"].append(record)
@@ -89,7 +91,7 @@ def process_bulk_records(records: List[Dict[str, Any]]) -> Dict[str, List]:
             # Perform bulk insert
             frappe.db.bulk_insert(
                 "Biometric Data Staging",
-                fields=["name", "attendance_device_id", "timestamp", "punch_type", "device_id", "status"],
+                fields=["name", "attendance_device_id", "timestamp", "punch_type", "device_id", "status", "creation"],
                 values=valid_records
             )
             frappe.db.commit()

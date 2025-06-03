@@ -127,18 +127,27 @@ app_license = "MIT"
 # Scheduled Tasks
 # ---------------
 
+
 scheduler_events = {
-    "cron": {
-        "*/5 * * * *": [
-            "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.validate_biometric_data"
-        ]
-    },
-# 	"all": [
-# 		"biometric_client.tasks.all"
+    "hourly": [
+        "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.process_biometric_logs"
+    ],
+    "daily": [
+        "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.send_exceptional_report"
+    ]
+}
+# scheduler_events = {
+#     "cron": {
+#         "*/5 * * * *": [
+#             "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.validate_biometric_data"
+#         ]
+#     },
+# # 	"all": [
+# # 		"biometric_client.tasks.all"
+# # 	],
+# 	"daily": [
+#         "biometric_client.biometric_client.doctype.biometric_client_settings.biometric_client_settings.create_attendance_automated"
 # 	],
-	"daily": [
-        "biometric_client.biometric_client.doctype.biometric_client_settings.biometric_client_settings.create_attendance_automated"
-	],
 # 	"hourly": [
 # 		"biometric_client.tasks.hourly"
 # 	],
@@ -148,7 +157,7 @@ scheduler_events = {
 # 	"monthly": [
 # 		"biometric_client.tasks.monthly"
 # 	],
-}
+# }
 
 # Testing
 # -------

@@ -186,6 +186,8 @@ def insert_unique_record(record: Dict[str, Any]) -> None:
     doc.punch_type = record["punch_type"]
     doc.device_id = record.get("device_id")
     doc.status = record.get("status", "Pending")
+    doc.latitude = float(record.get("latitude", 0.0000))  
+    doc.longitude = float(record.get("longitude", 0.0000))  
     
     # Insert the document
     doc.insert(ignore_permissions=True)
@@ -244,7 +246,7 @@ def validate_record(record: Dict[str, Any]) -> None:
         raise ValueError("Record must be a dictionary")
     
     # Check required fields
-    required_fields = ["attendance_device_id", "timestamp", "punch_type"]
+    required_fields = ["attendance_device_id", "timestamp", "punch_type", "latitude", "longitude"]  
     missing_fields = [field for field in required_fields if field not in record or record[field] is None]
     
     if missing_fields:
@@ -274,8 +276,20 @@ def validate_record(record: Dict[str, Any]) -> None:
     # Validate device_id format if provided
     if "device_id" in record and record["device_id"] is not None:
         device_id = str(record["device_id"]).strip()
-        if len(device_id) > 100:  # Reasonable length limit
+        if len(device_id) > 100:
             raise ValueError("device_id too long (max 100 characters)")
+
+    # Validate latitude and longitude
+    try:
+        latitude = float(record["latitude"])
+        longitude = float(record["longitude"])
+        if not (-90 <= latitude <= 90):
+            raise ValueError("Latitude must be between -90 and 90 degrees")
+        if not (-180 <= longitude <= 180):
+            raise ValueError("Longitude must be between -180 and 180 degrees")
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"Invalid latitude or longitude: {str(e)}")
+
 
 def check_record_exists(attendance_device_id: str, timestamp: str, device_id: str = None) -> bool:
     """

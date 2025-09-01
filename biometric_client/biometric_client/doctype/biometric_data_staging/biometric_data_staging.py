@@ -7,9 +7,8 @@ from frappe.utils import now
 
 
 class BiometricDataStaging(Document):
-	pass
+    pass
 
-# ------------------------- Core Functions -------------------------
 @frappe.whitelist()
 def enqueue_process_biometric_logs():
     """
@@ -31,7 +30,7 @@ def process_biometric_logs():
     unsynced_logs = frappe.get_all(
         "Biometric Data Staging",
         filters={"status": "Pending"},
-        fields=["name", "attendance_device_id", "timestamp", "punch_type", "device_id"]
+        fields=["name", "attendance_device_id", "timestamp", "punch_type", "device_id", "latitude", "longitude"]  
     )
     for log in unsynced_logs:
         try:
@@ -53,14 +52,21 @@ def process_biometric_logs():
                     "employee": employee,
                     "time": log.timestamp,
                     "log_type": log.punch_type,
-                    "device_id": log.device_id
+                    "device_id": log.device_id,
+                    "latitude": float(log.latitude),  # Add latitude
+                    "longitude": float(log.longitude)  # Add longitude
                 })
                 checkin.insert(ignore_permissions=True)
 
                 # Mark log as Processed
                 frappe.db.set_value("Biometric Data Staging", log.name, "status", "Processed")
             else:
-                # Mark log as Ignored if Employee is not found
+                # Mark log as Ignored if Employee is not found and Log a comment
+                staging_doc = frappe.get_doc("Biometric Data Staging", log.name)
+                staging_doc.add_comment(
+                    "Comment",
+                    text=f"Reason for Ignoring: No Employee found with Attendance ID {log.attendance_device_id}."
+                )
                 frappe.db.set_value("Biometric Data Staging", log.name, "status", "Ignored")
         except Exception as e:
             frappe.log_error(f"Failed to process log {log.name}: {str(e)}", "Biometric Log Processing Error")

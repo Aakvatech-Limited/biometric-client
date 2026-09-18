@@ -31,7 +31,8 @@ def process_biometric_logs():
     unsynced_logs = frappe.get_all(
         "Biometric Data Staging",
         filters={"status": "Pending"},
-        fields=["name", "attendance_device_id", "timestamp", "punch_type", "device_id"]
+        fields=["name", "attendance_device_id", "timestamp", "punch_type", "device_id"],
+        order_by="timestamp asc"
     )
     for log in unsynced_logs:
         try:

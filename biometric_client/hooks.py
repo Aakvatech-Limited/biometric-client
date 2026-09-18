@@ -129,9 +129,11 @@ app_license = "MIT"
 
 
 scheduler_events = {
-    "hourly": [
+    "cron": {
+    "*/20 * * * *": [
         "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.process_biometric_logs"
-    ],
+    ]
+},
     "daily": [
         "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.send_exceptional_report"
     ]

@@ -9,6 +9,12 @@ from frappe.utils import now
 class BiometricDataStaging(Document):
 	pass
 
+
+def normalize_log_type(punch_type):
+    """Return a value supported by Employee Checkin.log_type."""
+    return punch_type if punch_type in ("IN", "OUT") else ""
+
+
 # ------------------------- Core Functions -------------------------
 @frappe.whitelist()
 def enqueue_process_biometric_logs():
@@ -52,7 +58,7 @@ def process_biometric_logs():
                     "doctype": "Employee Checkin",
                     "employee": employee,
                     "time": log.timestamp,
-                    "log_type": log.punch_type,
+                    "log_type": normalize_log_type(log.punch_type),
                     "device_id": log.device_id
                 })
                 checkin.insert(ignore_permissions=True)

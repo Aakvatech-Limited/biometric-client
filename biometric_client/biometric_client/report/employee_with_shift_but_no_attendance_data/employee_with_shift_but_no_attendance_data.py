@@ -2,76 +2,124 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
+from frappe.utils import add_days, getdate
+
 
 def execute(filters=None):
-    # Ensure filters are a dictionary
-    filters = frappe.parse_json(filters) if isinstance(filters, str) else filters or {}
+	# Ensure filters are a dictionary
+	filters = frappe._dict(frappe.parse_json(filters) if isinstance(filters, str) else filters or {})
 
-    # Validate mandatory filters
-    mandatory_fields = ["from_date", "to_date"]
-    for field in mandatory_fields:
-        if not filters.get(field):
-            frappe.throw(f"{field} is mandatory")
+	# Validate mandatory filters
+	for field in ("from_date", "to_date"):
+		if not filters.get(field):
+			frappe.throw(_("{0} is mandatory").format(field))
 
-    # Define columns
-    columns = [
-        {"label": "Employee", "fieldname": "employee", "fieldtype": "Data", "width": 150},
-        {"label": "Employee Name", "fieldname": "employee_name", "fieldtype": "Data", "width": 220},
-        {"label": "Shift Type", "fieldname": "shift_type", "fieldtype": "Data", "width": 100},
-        {"label": "Shift Start Date", "fieldname": "shift_start", "fieldtype": "Date", "width": 130},
-        {"label": "Shift End Date", "fieldname": "shift_end", "fieldtype": "Date", "width": 130},
-        {"label": "Date", "fieldname": "date", "fieldtype": "Date", "width": 130},
-        {"label": "Day", "fieldname": "day", "fieldtype": "Data", "width": 100},
-        {"label": "Status", "fieldname": "status", "fieldtype": "Data", "width": 150},
-    ]
+	columns = [
+		{"label": _("Employee"), "fieldname": "employee", "fieldtype": "Data", "width": 150},
+		{"label": _("Employee Name"), "fieldname": "employee_name", "fieldtype": "Data", "width": 220},
+		{"label": _("Shift Type"), "fieldname": "shift_type", "fieldtype": "Data", "width": 100},
+		{"label": _("Shift Start Date"), "fieldname": "shift_start", "fieldtype": "Date", "width": 130},
+		{"label": _("Shift End Date"), "fieldname": "shift_end", "fieldtype": "Date", "width": 130},
+		{"label": _("Date"), "fieldname": "date", "fieldtype": "Date", "width": 130},
+		{"label": _("Day"), "fieldname": "day", "fieldtype": "Data", "width": 100},
+		{"label": _("Status"), "fieldname": "status", "fieldtype": "Data", "width": 150},
+	]
 
-    # Generate the query
-    query = f"""
-        WITH generated_dates AS (
-            SELECT ADDDATE('{filters['from_date']}', INTERVAL t.n DAY) AS date
-            FROM (
-                SELECT a.N + b.N * 10 AS n
-                FROM (
-                    SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9
-                ) a
-                CROSS JOIN (
-                    SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3
-                ) b
-            ) t
-            WHERE ADDDATE('{filters['from_date']}', INTERVAL t.n DAY) <= '{filters['to_date']}'
-        )
-        SELECT 
-            e.name AS employee,
-            e.employee_name,
-            sa.shift_type,
-            sa.start_date AS shift_start,
-            sa.end_date AS shift_end,
-            d.date,
-            DAYNAME(d.date) AS day,
-            CASE 
-                WHEN h.holiday_date IS NOT NULL THEN 'Holiday'
-                WHEN DAYNAME(d.date) = 'Sunday' THEN 'Weekend'
-                ELSE 'Missing Attendance'
-            END AS status
-        FROM `tabEmployee` e
-        LEFT JOIN `tabShift Assignment` sa ON e.name = sa.employee
-            AND sa.docstatus = 1
-            AND sa.status = 'Active'
-        LEFT JOIN generated_dates d ON d.date BETWEEN sa.start_date AND sa.end_date
-        LEFT JOIN `tabHoliday` h ON h.holiday_date = d.date
-            AND h.parent IN (
-                SELECT holiday_list FROM `tabEmployee` WHERE name = e.name
-            )
-        LEFT JOIN `tabAttendance` a ON e.name = a.employee
-            AND a.attendance_date = d.date
-            AND a.docstatus = 1
-        WHERE d.date BETWEEN '{filters['from_date']}' AND '{filters['to_date']}'
-            AND a.name IS NULL
-        ORDER BY e.employee_name, d.date
-    """
+	return columns, get_data(getdate(filters.from_date), getdate(filters.to_date))
 
-    # Fetch data
-    data = frappe.db.sql(query, as_dict=1)
 
-    # Return results
-    return columns, data
+def get_data(from_date, to_date):
+	"""One row per day an employee's active shift assignment covers but no submitted attendance exists."""
+	employee = frappe.qb.DocType("Employee")
+	assignment = frappe.qb.DocType("Shift Assignment")
+	assignments = (
+		frappe.qb.from_(employee)
+		.inner_join(assignment)
+		.on(
+			(employee.name == assignment.employee)
+			& (assignment.docstatus == 1)
+			& (assignment.status == "Active")
+		)
+		.select(
+			employee.name.as_("employee"),
+			employee.employee_name,
+			employee.holiday_list,
+			assignment.shift_type,
+			assignment.start_date.as_("shift_start"),
+			assignment.end_date.as_("shift_end"),
+		)
+		.where(
+			assignment.start_date.isnotnull()
+			& assignment.end_date.isnotnull()
+			& (assignment.start_date <= to_date)
+			& (assignment.end_date >= from_date)
+		)
+	).run(as_dict=True)
+	if not assignments:
+		return []
+
+	employees = list({row.employee for row in assignments})
+	attended = get_attended_days(employees, from_date, to_date)
+	holidays = get_holidays({row.holiday_list for row in assignments if row.holiday_list}, from_date, to_date)
+
+	data = []
+	for row in assignments:
+		day = max(from_date, getdate(row.shift_start))
+		last_day = min(to_date, getdate(row.shift_end))
+		while day <= last_day:
+			if (row.employee, day) not in attended:
+				day_name = day.strftime("%A")
+				if day in holidays.get(row.holiday_list, ()):
+					status = "Holiday"
+				elif day_name == "Sunday":
+					status = "Weekend"
+				else:
+					status = "Missing Attendance"
+				data.append(
+					frappe._dict(
+						employee=row.employee,
+						employee_name=row.employee_name,
+						shift_type=row.shift_type,
+						shift_start=row.shift_start,
+						shift_end=row.shift_end,
+						date=day,
+						day=day_name,
+						status=status,
+					)
+				)
+			day = add_days(day, 1)
+
+	data.sort(key=lambda d: (d.employee_name or "", d.date))
+	return data
+
+
+def get_attended_days(employees, from_date, to_date):
+	attendance = frappe.qb.DocType("Attendance")
+	rows = (
+		frappe.qb.from_(attendance)
+		.select(attendance.employee, attendance.attendance_date)
+		.where(
+			attendance.employee.isin(employees)
+			& (attendance.docstatus == 1)
+			& attendance.attendance_date.between(from_date, to_date)
+		)
+	).run()
+	return {(employee, getdate(day)) for employee, day in rows}
+
+
+def get_holidays(holiday_lists, from_date, to_date):
+	if not holiday_lists:
+		return {}
+
+	holiday = frappe.qb.DocType("Holiday")
+	rows = (
+		frappe.qb.from_(holiday)
+		.select(holiday.parent, holiday.holiday_date)
+		.where(holiday.parent.isin(list(holiday_lists)) & holiday.holiday_date.between(from_date, to_date))
+	).run()
+
+	holidays = {}
+	for holiday_list, day in rows:
+		holidays.setdefault(holiday_list, set()).add(getdate(day))
+	return holidays

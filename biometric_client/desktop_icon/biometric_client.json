@@ -1,0 +1,19 @@
+{
+ "app": "biometric_client",
+ "creation": "2026-10-23 15:15:46.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon_type": "App",
+ "idx": 0,
+ "label": "Biometric Client",
+ "link": "/desk/biometric-client/biometric-data-staging",
+ "link_type": "External",
+ "logo_url": "/assets/biometric_client/images/biometric_client-logo.svg",
+ "modified": "2026-10-23 15:15:46.000000",
+ "modified_by": "Administrator",
+ "name": "Biometric Client",
+ "owner": "Administrator",
+ "roles": [],
+ "standard": 1
+}

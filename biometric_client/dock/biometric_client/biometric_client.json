@@ -1,0 +1,23 @@
+{
+ "app": "biometric_client",
+ "creation": "2026-10-23 15:15:46.000000",
+ "docstatus": 0,
+ "doctype": "Dock",
+ "idx": 0,
+ "items": [
+  {
+   "added": 0,
+   "hidden": 0,
+   "icon": "fingerprint-pattern",
+   "link_to": "Biometric Client",
+   "link_type": "Sidebar",
+   "title": "Biometric Client"
+  }
+ ],
+ "modified": "2026-10-23 15:15:46.000000",
+ "modified_by": "Administrator",
+ "name": "biometric_client",
+ "owner": "Administrator",
+ "standard": 1,
+ "user": ""
+}

@@ -2,47 +2,52 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
+
 
 def execute(filters=None):
-    # Ensure filters are a dictionary
-    filters = frappe.parse_json(filters) if isinstance(filters, str) else filters or {}
+	# Ensure filters are a dictionary
+	filters = frappe._dict(frappe.parse_json(filters) if isinstance(filters, str) else filters or {})
 
-    # Validate mandatory filters
-    mandatory_fields = ["from_date", "to_date"]
-    for field in mandatory_fields:
-        if not filters.get(field):
-            frappe.throw(f"{field} is mandatory")
+	# Validate mandatory filters
+	for field in ("from_date", "to_date"):
+		if not filters.get(field):
+			frappe.throw(_("{0} is mandatory").format(field))
 
-    # Define columns
-    columns = [
-        {"label": "Employee", "fieldname": "employee", "fieldtype": "Data", "width": 150},
-        {"label": "Employee Name", "fieldname": "employee_name", "fieldtype": "Data", "width": 220},
-        {"label": "Attendance Status", "fieldname": "status", "fieldtype": "Data", "width": 150},
-        {"label": "Shift", "fieldname": "shift", "fieldtype": "Data", "width": 100},
-        {"label": "Attendance Date", "fieldname": "attendance_date", "fieldtype": "Date", "width": 130},
-    ]
+	columns = [
+		{"label": _("Employee"), "fieldname": "employee", "fieldtype": "Data", "width": 150},
+		{"label": _("Employee Name"), "fieldname": "employee_name", "fieldtype": "Data", "width": 220},
+		{"label": _("Attendance Status"), "fieldname": "status", "fieldtype": "Data", "width": 150},
+		{"label": _("Shift"), "fieldname": "shift", "fieldtype": "Data", "width": 100},
+		{"label": _("Attendance Date"), "fieldname": "attendance_date", "fieldtype": "Date", "width": 130},
+	]
 
-    # Generate the query
-    query = f"""
-        SELECT DISTINCT
-            a.employee,
-            a.employee_name,
-            a.status,
-            a.shift,
-            a.attendance_date
-        FROM `tabAttendance` a
-        INNER JOIN `tabShift Assignment` sa ON a.employee = sa.employee
-            AND sa.docstatus = 1
-            AND sa.status = 'Active'
-            AND sa.start_date <= a.attendance_date
-            AND sa.end_date >= a.attendance_date
-        WHERE a.attendance_date BETWEEN '{filters['from_date']}' AND '{filters['to_date']}'
-            AND a.docstatus = 1
-        ORDER BY a.employee_name, a.attendance_date
-    """
+	attendance = frappe.qb.DocType("Attendance")
+	assignment = frappe.qb.DocType("Shift Assignment")
+	data = (
+		frappe.qb.from_(attendance)
+		.inner_join(assignment)
+		.on(
+			(attendance.employee == assignment.employee)
+			& (assignment.docstatus == 1)
+			& (assignment.status == "Active")
+			& (assignment.start_date <= attendance.attendance_date)
+			& (assignment.end_date >= attendance.attendance_date)
+		)
+		.select(
+			attendance.employee,
+			attendance.employee_name,
+			attendance.status,
+			attendance.shift,
+			attendance.attendance_date,
+		)
+		.distinct()
+		.where(
+			attendance.attendance_date.between(filters.from_date, filters.to_date)
+			& (attendance.docstatus == 1)
+		)
+		.orderby(attendance.employee_name)
+		.orderby(attendance.attendance_date)
+	).run(as_dict=True)
 
-    # Fetch data
-    data = frappe.db.sql(query, as_dict=1)
-
-    # Return results
-    return columns, data
+	return columns, data

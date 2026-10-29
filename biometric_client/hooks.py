@@ -1,9 +1,21 @@
 app_name = "biometric_client"
 app_title = "Biometric Client"
 app_publisher = "elius mgani"
-app_description = "Biometric Client for Employee Checkin\'s Syncing"
+app_description = "Biometric Client for Employee Checkin's Syncing"
 app_email = "emgani@aakvatech.com"
 app_license = "MIT"
+required_apps = ["frappe/erpnext", "frappe/hrms"]
+app_logo_url = "/assets/biometric_client/images/biometric_client-logo.svg"
+
+# No "route": a bare `/desk/<module>` is not a page in v16, so the apps screen lands on the
+# first entry of the app's Dock (the Biometric Client sidebar) instead.
+add_to_apps_screen = [
+	{
+		"name": "biometric_client",
+		"logo": app_logo_url,
+		"title": "Biometric Client",
+	}
+]
 
 # Includes in <head>
 # ------------------
@@ -129,14 +141,14 @@ app_license = "MIT"
 
 
 scheduler_events = {
-    "cron": {
-    "*/20 * * * *": [
-        "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.process_biometric_logs"
-    ]
-},
-    "daily": [
-        "biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.send_exceptional_report"
-    ]
+	"cron": {
+		"*/20 * * * *": [
+			"biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.process_biometric_logs"
+		]
+	},
+	"daily": [
+		"biometric_client.biometric_client.doctype.biometric_data_staging.biometric_data_staging.send_exceptional_report"
+	],
 }
 # scheduler_events = {
 #     "cron": {
